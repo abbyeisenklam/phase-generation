@@ -172,7 +172,7 @@ def process_single_config(args, num_phases, use_worst_case=True):
 
     if cache == 2 and mem == 2:
         # Plot the specific configuration for the worst ratio
-        plot_specific_config(phase_df, cache, mem, phases)
+        plot_specific_config(group_df, cache, mem, phases)
     
     # Store phases for this configuration
     config_key = f"cache_{cache}_mem_{mem}"
