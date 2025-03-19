@@ -403,7 +403,7 @@ def save_phases_to_output_format(phases, df, task, synthetic_profiles, use_worst
         cache = int(config_key.split('_')[1])
         mem = int(config_key.split('_')[3])
 
-        dir = f"{task}_phases_synthetic={synthetic_profiles}_worstcase_rates={use_worst_case}_generation_method=Changepoint/{2 ** cache - 1}_{72 * mem}"
+        dir = f"{task}_phases-synthetic={synthetic_profiles}-worstcase={use_worst_case}/{2 ** cache - 1}_{72 * mem}"
 
         # Make the directory if it doesn't exist
         os.makedirs(dir, exist_ok=True)
