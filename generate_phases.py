@@ -751,13 +751,13 @@ def main():
     plt.tight_layout()
     plt.savefig('wcet_comparison_changepoint.png', dpi=300)
     
-    # Summary statistics
-    print("Summary Statistics:")
-    print(f"Mean Ratio: {comparison_df['ratio'].mean():.4f}")
-    print(f"Median Ratio: {comparison_df['ratio'].median():.4f}")
-    print(f"Min Ratio: {comparison_df['ratio'].min():.4f}")
-    print(f"Max Ratio: {comparison_df['ratio'].max():.4f}")
-    print(f"Standard Deviation: {comparison_df['ratio'].std():.4f}")
+    with open(f'{task}_summary_stats.txt', 'w') as file:
+        file.write("# Summary Statistics\n")
+        file.write(f"Mean Ratio: {comparison_df['ratio'].mean():.4f}\n")
+        file.write(f"Median Ratio: {comparison_df['ratio'].median():.4f}\n")
+        file.write(f"Min Ratio: {comparison_df['ratio'].min():.4f}\n")
+        file.write(f"Max Ratio: {comparison_df['ratio'].max():.4f}\n")
+        file.write(f"Standard Deviation: {comparison_df['ratio'].std():.4f}\n")
     
     # Print total execution time
     end_time_total = time.time()
