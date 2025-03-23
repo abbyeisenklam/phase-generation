@@ -216,171 +216,53 @@ def segment_time_series_parallel(df, num_phases, use_worst_case=True, num_worker
     
     return all_phases
 
-# Parallelized version of optimize_segmentation
-def optimize_segmentation_parallel(df, min_segments=3, max_segments=15, use_worst_case=True, num_workers=None):
-    """
-    Find optimal number of segments that minimizes variation within phases.
-    Processes each configuration in parallel.
+
+# Code to plot best number of changepoints
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Assuming changepoints, median_ratios, and max_ratios are already populated
+# from your previous code
+
+def plot_phase_ratios(task, changepoints, median_ratios, max_ratios):
+    # Create the figure and axis
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot the median ratios
+    ax.plot(changepoints, median_ratios, marker='o', linestyle='-', linewidth=2, 
+            color='blue', label='Median Ratio')
+
+    # Plot the max ratios
+    ax.plot(changepoints, max_ratios, marker='s', linestyle='-', linewidth=2, 
+            color='red', label='Maximum Ratio')
+
+    # Add grid for better readability
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+    # Set labels and title
+    ax.set_xlabel('Number of Changepoints', fontsize=12)
+    ax.set_ylabel('Ratio (Phase-Based WCET / True WCET)', fontsize=12)
+    ax.set_title('Impact of Phase Count on WCET Estimation Accuracy', fontsize=14)
+
+    # Add legend
+    ax.legend(fontsize=11)
+
+    # Set x-axis to start at the minimum changepoint
+    ax.set_xlim(min(changepoints) - 1, max(changepoints) + 1)
+
+    # Ensure the y-axis includes 1.0 (perfect estimation)
+    min_y = min(min(median_ratios), 1.0) * 0.95
+    max_y = max(max_ratios) * 1.05
+    ax.set_ylim(min_y, max_y)
+
+    # Add a horizontal line at y=1 (perfect estimation)
+    ax.axhline(y=1.0, color='green', linestyle='--', alpha=0.8, label='Perfect Estimation')
+
+    # Adjust layout
+    plt.tight_layout()
     
-    Parameters:
-        df (DataFrame): DataFrame containing the performance profile data
-        min_segments (int): Minimum number of segments to try
-        max_segments (int): Maximum number of segments to try
-        use_worst_case (bool): Whether to use worst-case rate or 99.99 percentile
-        num_workers (int): Number of parallel workers to use, defaults to CPU count - 1
-        
-    Returns:
-        dict: Dictionary of optimized phases for each configuration
-    """
-    def optimize_single_config(args):
-        """Helper function to optimize a single configuration for parallel execution"""
-        cache, mem, group_df = args
-        print(f"Optimizing segmentation for configuration: cache={cache}, mem={mem}")
-        
-        # Sort by instruction sum
-        group_df = group_df.sort_values(by='insn_sum')
-        
-        # Convert to array for ruptures
-        signal = group_df['insn_rate'].values
-        
-        best_cv = float('inf')
-        best_n_segments = min_segments
-        best_segments = []
-        
-        # Try different numbers of segments
-        for n_segments in range(min_segments, max_segments + 1):
-            try:
-                # Use kernel change point detection
-                print(f"Config cache={cache}, mem={mem} - Trying with {n_segments} segments")
-                algo = rpt.KernelCPD(kernel="linear", min_size=3).fit(signal)
-                change_points = algo.predict(n_segments)
-                
-                # If change_points is empty, skip this iteration
-                if not change_points or len(change_points) <= 1:
-                    continue
-                
-                # Make sure we start from 0
-                if change_points[0] != 0:
-                    change_points = [0] + change_points
-                
-                # Ensure the last index is included
-                if change_points[-1] != len(signal):
-                    change_points.append(len(signal))
-                
-                # Calculate average coefficient of variation across all segments
-                total_cv = 0
-                segment_count = 0
-                
-                for i in range(len(change_points) - 1):
-                    start_idx = change_points[i]
-                    end_idx = change_points[i+1]  # Use actual endpoint without subtracting 1
-                    
-                    if start_idx >= len(group_df) or end_idx > len(group_df):
-                        # Adjust end_idx if it exceeds the dataframe length
-                        if end_idx > len(group_df):
-                            end_idx = len(group_df)
-                        # Skip if still invalid
-                        if start_idx >= end_idx:
-                            continue
-                    
-                    phase_df = group_df.iloc[start_idx:end_idx]
-                    
-                    # Skip segments with insufficient data
-                    if len(phase_df) <= 1 or phase_df['insn_rate'].std() == 0:
-                        continue
-                    
-                    # Calculate coefficient of variation
-                    cv = phase_df['insn_rate'].std() / phase_df['insn_rate'].mean() if phase_df['insn_rate'].mean() > 0 else 0
-                    total_cv += cv
-                    segment_count += 1
-                
-                avg_cv = total_cv / segment_count if segment_count > 0 else float('inf')
-                
-                # Update best if this segmentation has lower average CV
-                if avg_cv < best_cv:
-                    best_cv = avg_cv
-                    best_n_segments = n_segments
-                    best_segments = change_points
-            except Exception as e:
-                print(f"Error with n_segments={n_segments}: {e}")
-                continue
-        
-        print(f"Best number of segments for configuration cache={cache}, mem={mem}: {best_n_segments} (CV={best_cv:.4f})")
-        
-        # Use best segments or fallback to Pelt if optimization failed
-        if not best_segments:
-            algo = rpt.Pelt(model="l2").fit(signal)  # l2 is faster than rbf
-            best_segments = algo.predict(pen=10)
-            if not best_segments or len(best_segments) <= 1:
-                best_segments = [0, len(signal)]
-            elif best_segments[0] != 0:
-                best_segments = [0] + best_segments
-            
-            # Ensure the last index is included
-            if best_segments[-1] != len(signal):
-                best_segments.append(len(signal))
-        
-        phases = []
-        for i in range(len(best_segments) - 1):
-            start_idx = best_segments[i]
-            end_idx = best_segments[i+1]  # Use actual endpoint without subtracting 1
-            
-            if start_idx >= len(group_df) or end_idx > len(group_df):
-                # Adjust end_idx if it exceeds the dataframe length
-                if end_idx > len(group_df):
-                    end_idx = len(group_df)
-                # Skip if still invalid
-                if start_idx >= end_idx:
-                    continue
-            
-            phase_df = group_df.iloc[start_idx:end_idx]
-            
-            # Skip empty phases
-            if len(phase_df) <= 1:
-                continue
-            
-            start_insn = phase_df['insn_sum'].iloc[0]
-            end_insn = phase_df['insn_sum'].iloc[-1]
-            
-            if use_worst_case:
-                rate = phase_df['insn_rate'].min()
-            else:
-                rate = phase_df['insn_rate'].quantile(0.9999)
-            
-            phase = {
-                'start_insn': start_insn,
-                'end_insn': end_insn,
-                'worst_case_rate': rate,
-                'mean_rate': phase_df['insn_rate'].mean(),
-                'std_rate': phase_df['insn_rate'].std(),
-                'cv': phase_df['insn_rate'].std() / phase_df['insn_rate'].mean() if phase_df['insn_rate'].mean() > 0 else 0
-            }
-            
-            phases.append(phase)
-        
-        config_key = f"cache_{cache}_mem_{mem}"
-        return (config_key, phases)
-    
-    # Set up parallel processing
-    if num_workers is None:
-        num_workers = max(1, cpu_count() - 1)  # Leave one CPU free
-    
-    print(f"Starting parallel optimization with {num_workers} workers")
-    
-    # Group by cache and memory configurations
-    grouped = df.groupby(['cache', 'mem'])
-    
-    # Prepare tasks for parallel processing
-    tasks = [(cache, mem, group_df) for (cache, mem), group_df in grouped]
-    
-    # Process in parallel
-    with Pool(processes=num_workers) as pool:
-        results = pool.map(optimize_single_config, tasks)
-    
-    # Convert results list to dictionary
-    best_phases = dict(results)
-    
-    return best_phases
+    # Save the figure
+    plt.savefig(f'{task}_WCET_ratios_vs_changepoints.png', dpi=300)
 
 
 def save_phases_to_output_format(phases, df, task, synthetic_profiles, use_worst_case):
@@ -587,8 +469,8 @@ def parse_arguments():
                         help="Whether to use synthetic profile (1/0)")
     parser.add_argument("-i", "--input_dir", type=str, required=True, 
                         help="Raw profiles directory (string)")
-    parser.add_argument("-o", "--optimize_num_changepoints", type=int, required=True, 
-                        help="Whether to optimize number of changepoints (1/0)")
+    parser.add_argument("-f", "--find_num_changepoints", type=int, required=True, 
+                        help="Whether to plot WCET ratios vs number of changepoints (1/0)")
     
     # Conditional arguments
     parser.add_argument("-p", "--num_per_config", type=int, 
@@ -602,8 +484,8 @@ def parse_arguments():
     if not args.synthetic_profile and args.num_per_config is None:
         parser.error("--num_per_config is required when --synthetic_profile is false")
     
-    if not args.optimize_num_changepoints and args.num_changepoints is None:
-        parser.error("--num_changepoints is required when --optimize_num_changepoints is false")
+    if not args.find_num_changepoints and args.num_changepoints is None:
+        parser.error("--num_changepoints is required when --find_num_changepoints is false")
     
     # Validate that input directory exists
     if not os.path.isdir(args.input_dir):
@@ -622,14 +504,14 @@ def main():
     print(f"  Task: {args.task_name}")
     print(f"  Use worst case: {args.use_worst_case}")
     print(f"  Synthetic profile: {args.synthetic_profile}")
-    print(f"  Optimize num changepoints: {args.optimize_num_changepoints}")
+    print(f"  Find best num changepoints: {args.find_num_changepoints}")
     print(f"  Raw profiles directory: {args.input_dir}")
     
     # Print conditional arguments
     if not args.synthetic_profile:
         print(f"  Num per config: {args.num_per_config}")
     
-    if not args.optimize_num_changepoints:
+    if not args.find_num_changepoints:
         print(f"  Num changepoints: {args.num_changepoints}")
     
     # Set input params
@@ -656,112 +538,169 @@ def main():
     # Set parameters
     # Use either fixed number of phases or optimization
     num_change_points = args.num_changepoints
-    use_optimization = args.optimize_num_changepoints
+    plot_ratios_vs_num_changepoints = args.find_num_changepoints
     
-    if use_optimization:
+    if plot_ratios_vs_num_changepoints:
         # Parameters for optimization
-        min_segments = 3
-        max_segments = 20
+        min_phases = 15
+        max_phases = 20
+
+        changepoints = []
+        median_ratios = []
+        max_ratios = []
         
         # Optimize segmentation with parallel processing
-        phases = optimize_segmentation_parallel(df, min_segments, max_segments, use_worst_case, num_workers)
+        for cur_changepoints in range(min_phases, max_phases):
+
+            changepoints.append(cur_changepoints)
+
+            grouped = df[(df['cache'] == 5) & (df['mem'] == 5)]
+
+            phases = process_single_config((5, 5, grouped), cur_changepoints, use_worst_case)
+
+             # Prepare to collect WCETs
+            per_phase_wcets = []
+            true_wcets = []
+            
+            # Create a DataFrame with all phase data
+            for config_key, config_phases in phases.items():
+                cache = int(config_key.split('_')[1])
+                mem = int(config_key.split('_')[3])
+
+                # Calculate WCET
+                wcet = 0
+                for phase_idx, phase in enumerate(config_phases):
+                    phase_data = {
+                        'cache': cache,
+                        'mem': mem,
+                        'phase': phase_idx + 1,
+                        'insn_start': phase['start_insn'],
+                        'insn_end': phase['end_insn'],
+                        'insn_rate': phase['worst_case_rate']
+                    }
+                    wcet += (phase_data['insn_end'] - phase_data['insn_start']) / phase_data['insn_rate']
+                    
+                per_phase_wcets.append(wcet)
+                    
+                # Get true WCET from original data
+                true_wcet = df.loc[(df['cache'] == cache) & (df['mem'] == mem)]['time'].astype(float).max()
+                true_wcets.append(true_wcet)
+
+            # Convert lists to numpy arrays for easier manipulation
+            true_wcets = np.array(true_wcets)
+            per_phase_wcets = np.array(per_phase_wcets)
+
+            # Create a DataFrame for easier manipulation and plotting
+            comparison_df = pd.DataFrame({
+                'true_wcet': true_wcets,
+                'per_phase_wcet': per_phase_wcets
+            })
+
+            # Calculate the ratio
+            comparison_df['ratio'] = comparison_df['per_phase_wcet'] / comparison_df['true_wcet']
+            comparison_df['ratio'].median()
+            median_ratios.append(comparison_df['ratio'].median())
+            max_ratios.append(comparison_df['ratio'].max())
+
+            plot_phase_ratios(task, changepoints, median_ratios, max_ratios)
+                    
     else:
         # Fixed number of phases with parallel processing
         phases = segment_time_series_parallel(df, num_change_points, use_worst_case, num_workers)
     
-    # Save results in your required format
-    per_phase_wcets, true_wcets = save_phases_to_output_format(phases, df, task, 
-                                                               synthetic_profiles, 
-                                                               use_worst_case)
-    
-    # Print overall statistics
-    avg_ratio = sum(p/t for p, t in zip(per_phase_wcets, true_wcets)) / len(per_phase_wcets)
-    print(f"Average per-phase WCET / true WCET ratio: {avg_ratio}")
-
-    # Convert lists to numpy arrays for easier manipulation
-    true_wcets = np.array(true_wcets)
-    per_phase_wcets = np.array(per_phase_wcets)
-
-    # Create a DataFrame for easier manipulation and plotting
-    comparison_df = pd.DataFrame({
-        'true_wcet': true_wcets,
-        'per_phase_wcet': per_phase_wcets
-    })
-
-    # Calculate the ratio
-    comparison_df['ratio'] = comparison_df['per_phase_wcet'] / comparison_df['true_wcet']
-
-    # Plot 1: Scatter plot of true_wcet vs per_phase_wcet
-    plt.figure(figsize=(12, 10))
-
-    plt.subplot(2, 2, 1)
-    plt.scatter(true_wcets, per_phase_wcets, alpha=0.7)
-    plt.plot([min(true_wcets), max(true_wcets)], [min(true_wcets), max(true_wcets)], 'r--', label='y=x')
-    plt.xlabel('True WCET')
-    plt.ylabel('Per-Phase WCET')
-    plt.title('Per-Phase WCET vs True WCET')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-
-    # Plot 2: Histogram of ratios
-    plt.subplot(2, 2, 2)
-    plt.hist(comparison_df['ratio'], bins=20, alpha=0.7)
-    plt.xlabel('Ratio (Per-Phase WCET / True WCET)')
-    plt.ylabel('Frequency')
-    plt.title('Distribution of WCET Ratios')
-    plt.grid(True, alpha=0.3)
-
-    # Plot 3: Resource allocation heat map
-    # Check if we can create the heat map
-
-    try:
-        num_cache = len(cache_sizes)
-        num_mem = len(mem_bws)
+        # Save results in your required format
+        per_phase_wcets, true_wcets = save_phases_to_output_format(phases, df, task, 
+                                                                synthetic_profiles, 
+                                                                use_worst_case)
         
-        # Reshape the ratio data into a 2D grid if dimensions align
-        if len(comparison_df) == num_cache * num_mem:
-            ratio_grid = comparison_df['ratio'].values.reshape(num_cache, num_mem)
-            
-            plt.subplot(2, 2, 3)
-            plt.imshow(ratio_grid, cmap='viridis', interpolation='nearest')
-            plt.colorbar(label='Per-Phase WCET / True WCET')
-            plt.xlabel('Memory Bandwidth Index')
-            plt.ylabel('Cache Size Index')
-            plt.title('WCET Ratio by Resource Allocation')
-            
-            # Add actual values as text if the grid is not too large
-            if num_cache * num_mem <= 100:  # Only add text for reasonably sized grids
-                for i in range(num_cache):
-                    for j in range(num_mem):
-                        plt.text(j, i, f"{ratio_grid[i, j]:.2f}", 
-                                ha="center", va="center", color="w")
-    except Exception as e:
-        print(f"Could not create heatmap: {e}")
+        # Print overall statistics
+        avg_ratio = sum(p/t for p, t in zip(per_phase_wcets, true_wcets)) / len(per_phase_wcets)
+        print(f"Average per-phase WCET / true WCET ratio: {avg_ratio}")
 
-    # Plot 4: Line plot showing the trend
-    plt.subplot(2, 2, 4)
-    plt.scatter(range(len(true_wcets)), true_wcets, color='b', label='True WCET')
-    plt.scatter(range(len(per_phase_wcets)), per_phase_wcets, color='g', label='Per-Phase WCET')
-    plt.xlabel('Resource Allocation Index')
-    plt.ylabel('WCET')
-    plt.title('WCET Trends Across Resource Allocations')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+        # Convert lists to numpy arrays for easier manipulation
+        true_wcets = np.array(true_wcets)
+        per_phase_wcets = np.array(per_phase_wcets)
 
-    plt.tight_layout()
-    plt.savefig('wcet_comparison_changepoint.png', dpi=300)
-    
-    with open(f'{task}_summary_stats.txt', 'w') as file:
-        file.write("# Summary Statistics\n")
-        file.write(f"Mean Ratio: {comparison_df['ratio'].mean():.4f}\n")
-        file.write(f"Median Ratio: {comparison_df['ratio'].median():.4f}\n")
-        file.write(f"Min Ratio: {comparison_df['ratio'].min():.4f}\n")
-        file.write(f"Max Ratio: {comparison_df['ratio'].max():.4f}\n")
-        file.write(f"Standard Deviation: {comparison_df['ratio'].std():.4f}\n")
-    
-    # Print total execution time
-    end_time_total = time.time()
-    print(f"Total execution time: {end_time_total - start_time_total:.2f} seconds")
+        # Create a DataFrame for easier manipulation and plotting
+        comparison_df = pd.DataFrame({
+            'true_wcet': true_wcets,
+            'per_phase_wcet': per_phase_wcets
+        })
+
+        # Calculate the ratio
+        comparison_df['ratio'] = comparison_df['per_phase_wcet'] / comparison_df['true_wcet']
+
+        # Plot 1: Scatter plot of true_wcet vs per_phase_wcet
+        plt.figure(figsize=(12, 10))
+
+        plt.subplot(2, 2, 1)
+        plt.scatter(true_wcets, per_phase_wcets, alpha=0.7)
+        plt.plot([min(true_wcets), max(true_wcets)], [min(true_wcets), max(true_wcets)], 'r--', label='y=x')
+        plt.xlabel('True WCET')
+        plt.ylabel('Per-Phase WCET')
+        plt.title('Per-Phase WCET vs True WCET')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+
+        # Plot 2: Histogram of ratios
+        plt.subplot(2, 2, 2)
+        plt.hist(comparison_df['ratio'], bins=20, alpha=0.7)
+        plt.xlabel('Ratio (Per-Phase WCET / True WCET)')
+        plt.ylabel('Frequency')
+        plt.title('Distribution of WCET Ratios')
+        plt.grid(True, alpha=0.3)
+
+        # Plot 3: Resource allocation heat map
+        # Check if we can create the heat map
+
+        try:
+            num_cache = len(cache_sizes)
+            num_mem = len(mem_bws)
+            
+            # Reshape the ratio data into a 2D grid if dimensions align
+            if len(comparison_df) == num_cache * num_mem:
+                ratio_grid = comparison_df['ratio'].values.reshape(num_cache, num_mem)
+                
+                plt.subplot(2, 2, 3)
+                plt.imshow(ratio_grid, cmap='viridis', interpolation='nearest')
+                plt.colorbar(label='Per-Phase WCET / True WCET')
+                plt.xlabel('Memory Bandwidth Index')
+                plt.ylabel('Cache Size Index')
+                plt.title('WCET Ratio by Resource Allocation')
+                
+                # Add actual values as text if the grid is not too large
+                if num_cache * num_mem <= 100:  # Only add text for reasonably sized grids
+                    for i in range(num_cache):
+                        for j in range(num_mem):
+                            plt.text(j, i, f"{ratio_grid[i, j]:.2f}", 
+                                    ha="center", va="center", color="w")
+        except Exception as e:
+            print(f"Could not create heatmap: {e}")
+
+        # Plot 4: Line plot showing the trend
+        plt.subplot(2, 2, 4)
+        plt.scatter(range(len(true_wcets)), true_wcets, color='b', label='True WCET')
+        plt.scatter(range(len(per_phase_wcets)), per_phase_wcets, color='g', label='Per-Phase WCET')
+        plt.xlabel('Resource Allocation Index')
+        plt.ylabel('WCET')
+        plt.title('WCET Trends Across Resource Allocations')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig('wcet_comparison_changepoint.png', dpi=300)
+        
+        with open(f'{task}_summary_stats.txt', 'w') as file:
+            file.write("# Summary Statistics\n")
+            file.write(f"Mean Ratio: {comparison_df['ratio'].mean():.4f}\n")
+            file.write(f"Median Ratio: {comparison_df['ratio'].median():.4f}\n")
+            file.write(f"Min Ratio: {comparison_df['ratio'].min():.4f}\n")
+            file.write(f"Max Ratio: {comparison_df['ratio'].max():.4f}\n")
+            file.write(f"Standard Deviation: {comparison_df['ratio'].std():.4f}\n")
+        
+        # Print total execution time
+        end_time_total = time.time()
+        print(f"Total execution time: {end_time_total - start_time_total:.2f} seconds")
 
 if __name__ == "__main__":
    main()
