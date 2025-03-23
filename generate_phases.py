@@ -564,6 +564,9 @@ def main():
             # Optimize segmentation with parallel processing
             for cur_changepoints in range(min_phases, max_phases):
 
+                # Print progress
+                print(f"On changepoint {cur_changepoints} out of {max_phases}")
+
                 changepoints.append(cur_changepoints)
 
                 # Fixed number of phases with parallel processing
