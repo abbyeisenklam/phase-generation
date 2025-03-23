@@ -56,7 +56,7 @@ def plot_specific_config(config_df, target_cache, target_mem, phases):
     # Add labels and title
     plt.xlabel('Cumulative Instruction Count (insn_sum)')
     plt.ylabel('Instruction Rate (insn_rate)')
-    plt.title(f'Instruction Rate vs Instruction Sum for Cache={target_cache}, Mem={target_mem}')
+    plt.title(f'Phase Generation for Cache={target_cache}, Mem={target_mem} with Num Changepoints={len(phases)}')
     plt.grid(True, alpha=0.3)
     plt.legend()
     
@@ -93,7 +93,7 @@ def process_single_config(args, num_phases, use_worst_case=True):
         Tuple of (config_key, phases)
     """
     cache, mem, group_df = args
-    print(f"Processing configuration: cache={cache}, mem={mem}")
+    #print(f"Processing configuration: cache={cache}, mem={mem}")
     
     # Sort by instruction sum (cumulative instruction count)
     group_df = group_df.sort_values(by='insn_sum')
@@ -102,11 +102,9 @@ def process_single_config(args, num_phases, use_worst_case=True):
     signal = group_df['insn_rate'].values
     
     # Use kernel change point detection with linear kernel (faster than RBF)
-    start_time = time.time()  # Start timer
     algo = rpt.KernelCPD(kernel="linear", min_size=3).fit(signal)
     change_points = algo.predict(num_phases)
-    end_time = time.time()  # Stop timer
-    print(f"Config cache={cache}, mem={mem} - Elapsed time: {end_time - start_time:.4f} seconds")
+
     
     # If change_points is empty (can happen with some signals), use Pelt algorithm instead
     if not change_points or len(change_points) <= 1:
@@ -552,7 +550,7 @@ def main():
     
     if plot_ratios_vs_num_changepoints:
         # Parameters for optimization
-        min_phases = 10
+        min_phases = 20
         max_phases = num_change_points
 
         changepoints = []
@@ -564,13 +562,15 @@ def main():
             # Optimize segmentation with parallel processing
             for cur_changepoints in range(min_phases, max_phases):
 
+                start_time = time.time()  # Start timer
+
                 # Print progress
                 print(f"On changepoint {cur_changepoints} out of {max_phases}")
 
                 changepoints.append(cur_changepoints)
 
                 # Fixed number of phases with parallel processing
-                phases = segment_time_series_parallel(df, num_change_points, use_worst_case, num_workers)
+                phases = segment_time_series_parallel(df, cur_changepoints, use_worst_case, num_workers)
         
                 # Save results in your required format
                 # Prepare to collect WCETs
@@ -616,6 +616,9 @@ def main():
 
                 median_ratios.append(comparison_df['ratio'].median())
                 max_ratios.append(comparison_df['ratio'].max())
+
+                end_time = time.time()  # Stop timer
+                print(f"Changepoint: {cur_changepoints} - Elapsed time: {end_time - start_time:.4f} seconds")
 
         else:
             # Read the CSV file into a pandas DataFrame
