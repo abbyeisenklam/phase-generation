@@ -508,8 +508,8 @@ def main():
         print(f"  Num changepoints: {args.num_changepoints}")
     
     # Set input params
-    cache_sizes = [2 ** i - 1 for i in range(1, 21)]
-    mem_bws = [72 * i for i in range(1, 21)]
+    cache_sizes = [2 ** i - 1 for i in range(2, 21)]
+    mem_bws = [72 * i for i in range(2, 21)]
     task = args.task_name
     synthetic_profiles = args.synthetic_profile # use the synthetic profiles?
     if synthetic_profiles:
