@@ -563,28 +563,22 @@ def main():
             true_wcets = []
             
             # Create a DataFrame with all phase data
-            for config_key, config_phases in phases.items():
-                cache = int(config_key.split('_')[1])
-                mem = int(config_key.split('_')[3])
-
-                # Calculate WCET
-                wcet = 0
-                for phase_idx, phase in enumerate(config_phases):
-                    phase_data = {
-                        'cache': cache,
-                        'mem': mem,
-                        'phase': phase_idx + 1,
-                        'insn_start': phase['start_insn'],
-                        'insn_end': phase['end_insn'],
-                        'insn_rate': phase['worst_case_rate']
-                    }
-                    wcet += (phase_data['insn_end'] - phase_data['insn_start']) / phase_data['insn_rate']
+            for phase_idx, phase in enumerate(phases):
+                phase_data = {
+                    'cache': 5,
+                    'mem': 5,
+                    'phase': phase_idx + 1,
+                    'insn_start': phase['start_insn'],
+                    'insn_end': phase['end_insn'],
+                    'insn_rate': phase['worst_case_rate']
+                }
+                wcet += (phase_data['insn_end'] - phase_data['insn_start']) / phase_data['insn_rate']
+                
+            per_phase_wcets.append(wcet)
                     
-                per_phase_wcets.append(wcet)
-                    
-                # Get true WCET from original data
-                true_wcet = df.loc[(df['cache'] == cache) & (df['mem'] == mem)]['time'].astype(float).max()
-                true_wcets.append(true_wcet)
+            # Get true WCET from original data
+            true_wcet = df.loc[(df['cache'] == 5) & (df['mem'] == 5)]['time'].astype(float).max()
+            true_wcets.append(true_wcet)
 
             # Convert lists to numpy arrays for easier manipulation
             true_wcets = np.array(true_wcets)
