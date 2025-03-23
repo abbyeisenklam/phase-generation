@@ -224,13 +224,19 @@ import numpy as np
 # Assuming changepoints, median_ratios, and max_ratios are already populated
 # from your previous code
 
-def plot_phase_ratios(task, changepoints, ratios):
+def plot_phase_ratios(task, changepoints, median_ratios, max_ratios):
     # Create the figure and axis
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # Plot the ratios
-    ax.plot(changepoints, ratios, marker='o', linestyle='-', linewidth=2, 
-            color='blue')
+    ax.plot(changepoints, median_ratios, marker='o', linestyle='-', linewidth=2, 
+            color='blue', label='median')
+    
+    ax.plot(changepoints, max_ratios, marker='o', linestyle='-', linewidth=2, 
+            color='red', label='max')
+    
+    # Add legend
+    ax.legend(loc='best', fontsize=10)
 
     # Add grid for better readability
     ax.grid(True, linestyle='--', alpha=0.7)
@@ -244,8 +250,8 @@ def plot_phase_ratios(task, changepoints, ratios):
     ax.set_xlim(min(changepoints) - 1, max(changepoints) + 1)
 
     # Ensure the y-axis includes 1.0 (perfect estimation)
-    min_y = min(min(ratios), 1.0) * 0.95
-    max_y = max(ratios) * 1.05
+    min_y = min(min(median_ratios), 1.0) * 0.95
+    max_y = max(max_ratios) * 1.05
     ax.set_ylim(min_y, max_y)
 
     # Add a horizontal line at y=1 (perfect estimation)
@@ -256,6 +262,17 @@ def plot_phase_ratios(task, changepoints, ratios):
     
     # Save the figure
     plt.savefig(f'{task}_WCET_ratios_vs_changepoints.png', dpi=300)
+
+    # Create DataFrame with the data
+    df = pd.DataFrame({
+        'changepoints': changepoints,
+        'median_ratios': median_ratios,
+        'max_ratios': max_ratios
+    })
+    
+    # Save to CSV
+    csv_filename = f'{task}_WCET_ratios_data.csv'
+    df.to_csv(csv_filename, index=False)
 
 
 def save_phases_to_output_format(phases, df, task, synthetic_profiles, use_worst_case):
@@ -535,43 +552,67 @@ def main():
     
     if plot_ratios_vs_num_changepoints:
         # Parameters for optimization
-        min_phases = 20
-        max_phases = 60
+        min_phases = 10
+        max_phases = num_change_points
 
         changepoints = []
-        ratios = []
+        median_ratios = []
+        max_ratios = []
         
         # Optimize segmentation with parallel processing
         for cur_changepoints in range(min_phases, max_phases):
 
             changepoints.append(cur_changepoints)
 
-            grouped = df[(df['cache'] == 5) & (df['mem'] == 5)]
-
-            (_, phases) = process_single_config((5, 5, grouped), cur_changepoints, use_worst_case)
+            # Fixed number of phases with parallel processing
+            phases = segment_time_series_parallel(df, num_change_points, use_worst_case, num_workers)
+    
+            # Save results in your required format
+            # Prepare to collect WCETs
+            per_phase_wcets = []
+            true_wcets = []
             
-            wcet = 0
             # Create a DataFrame with all phase data
-            for phase_idx, phase in enumerate(phases):
-                phase_data = {
-                    'cache': 5,
-                    'mem': 5,
-                    'phase': phase_idx + 1,
-                    'insn_start': phase['start_insn'],
-                    'insn_end': phase['end_insn'],
-                    'insn_rate': phase['worst_case_rate']
-                }
-                wcet += (phase_data['insn_end'] - phase_data['insn_start']) / phase_data['insn_rate']
-                
-                    
-            # Get true WCET from original data
-            true_wcet = df.loc[(df['cache'] == 5) & (df['mem'] == 5)]['time'].astype(float).max()
+            for config_key, config_phases in phases.items():
+                cache = int(config_key.split('_')[1])
+                mem = int(config_key.split('_')[3])
 
+                # Calculate WCET
+                wcet = 0
+                for phase_idx, phase in enumerate(config_phases):
+                    phase_data = {
+                        'cache': cache,
+                        'mem': mem,
+                        'phase': phase_idx + 1,
+                        'insn_start': phase['start_insn'],
+                        'insn_end': phase['end_insn'],
+                        'insn_rate': phase['worst_case_rate']
+                    }
+                    wcet += (phase_data['insn_end'] - phase_data['insn_start']) / phase_data['insn_rate']
+                    
+                per_phase_wcets.append(wcet)
+                    
+                # Get true WCET from original data
+                true_wcet = df.loc[(df['cache'] == cache) & (df['mem'] == mem)]['time'].astype(float).max()
+                true_wcets.append(true_wcet)
+
+            # Convert lists to numpy arrays for easier manipulation
+            true_wcets = np.array(true_wcets)
+            per_phase_wcets = np.array(per_phase_wcets)
+
+            # Create a DataFrame for easier manipulation and plotting
+            comparison_df = pd.DataFrame({
+                'true_wcet': true_wcets,
+                'per_phase_wcet': per_phase_wcets
+            })
 
             # Calculate the ratio
-            ratios.append(wcet / true_wcet)
+            comparison_df['ratio'] = comparison_df['per_phase_wcet'] / comparison_df['true_wcet']
 
-        plot_phase_ratios(task, changepoints, ratios)
+            median_ratios.append(comparison_df['ratio'].median())
+            max_ratios.append(comparison_df['ratio'].max())
+
+        plot_phase_ratios(task, changepoints, median_ratios, max_ratios)
                     
     else:
         # Fixed number of phases with parallel processing
