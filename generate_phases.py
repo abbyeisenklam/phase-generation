@@ -556,7 +556,7 @@ def main():
 
             grouped = df[(df['cache'] == 5) & (df['mem'] == 5)]
 
-            phases = process_single_config((5, 5, grouped), cur_changepoints, use_worst_case)
+            (_, phases) = process_single_config((5, 5, grouped), cur_changepoints, use_worst_case)
 
              # Prepare to collect WCETs
             per_phase_wcets = []
