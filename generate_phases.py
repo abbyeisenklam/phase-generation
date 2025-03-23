@@ -550,7 +550,7 @@ def main():
     
     if plot_ratios_vs_num_changepoints:
         # Parameters for optimization
-        min_phases = 20
+        min_phases = 15
         max_phases = num_change_points
 
         changepoints = []
@@ -560,7 +560,7 @@ def main():
         if not os.path.exists(f'{task}_WCET_ratios_data.csv'):
         
             # Optimize segmentation with parallel processing
-            for cur_changepoints in range(min_phases, max_phases):
+            for cur_changepoints in range(min_phases, max_phases + 1, 5):
 
                 start_time = time.time()  # Start timer
 
