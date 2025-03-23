@@ -224,24 +224,20 @@ import numpy as np
 # Assuming changepoints, median_ratios, and max_ratios are already populated
 # from your previous code
 
-def plot_phase_ratios(task, changepoints, median_ratios, max_ratios):
+def plot_phase_ratios(task, changepoints, ratios):
     # Create the figure and axis
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Plot the median ratios
-    ax.plot(changepoints, median_ratios, marker='o', linestyle='-', linewidth=2, 
-            color='blue', label='Median Ratio')
-
-    # Plot the max ratios
-    ax.plot(changepoints, max_ratios, marker='s', linestyle='-', linewidth=2, 
-            color='red', label='Maximum Ratio')
+    # Plot the ratios
+    ax.plot(changepoints, ratios, marker='o', linestyle='-', linewidth=2, 
+            color='blue')
 
     # Add grid for better readability
     ax.grid(True, linestyle='--', alpha=0.7)
 
     # Set labels and title
     ax.set_xlabel('Number of Changepoints', fontsize=12)
-    ax.set_ylabel('Ratio (Phase-Based WCET / True WCET)', fontsize=12)
+    ax.set_ylabel(f'Ratio (Phase-Based WCET / True WCET) for {task} with (cache=5, bw=5)', fontsize=12)
     ax.set_title('Impact of Phase Count on WCET Estimation Accuracy', fontsize=14)
 
     # Add legend
@@ -251,8 +247,8 @@ def plot_phase_ratios(task, changepoints, median_ratios, max_ratios):
     ax.set_xlim(min(changepoints) - 1, max(changepoints) + 1)
 
     # Ensure the y-axis includes 1.0 (perfect estimation)
-    min_y = min(min(median_ratios), 1.0) * 0.95
-    max_y = max(max_ratios) * 1.05
+    min_y = min(min(ratios), 1.0) * 0.95
+    max_y = max(ratios) * 1.05
     ax.set_ylim(min_y, max_y)
 
     # Add a horizontal line at y=1 (perfect estimation)
@@ -546,8 +542,7 @@ def main():
         max_phases = 20
 
         changepoints = []
-        median_ratios = []
-        max_ratios = []
+        ratios = []
         
         # Optimize segmentation with parallel processing
         for cur_changepoints in range(min_phases, max_phases):
@@ -557,11 +552,8 @@ def main():
             grouped = df[(df['cache'] == 5) & (df['mem'] == 5)]
 
             (_, phases) = process_single_config((5, 5, grouped), cur_changepoints, use_worst_case)
-
-             # Prepare to collect WCETs
-            per_phase_wcets = []
-            true_wcets = []
             
+            wcet = 0
             # Create a DataFrame with all phase data
             for phase_idx, phase in enumerate(phases):
                 phase_data = {
@@ -574,29 +566,15 @@ def main():
                 }
                 wcet += (phase_data['insn_end'] - phase_data['insn_start']) / phase_data['insn_rate']
                 
-            per_phase_wcets.append(wcet)
                     
             # Get true WCET from original data
             true_wcet = df.loc[(df['cache'] == 5) & (df['mem'] == 5)]['time'].astype(float).max()
-            true_wcets.append(true_wcet)
 
-            # Convert lists to numpy arrays for easier manipulation
-            true_wcets = np.array(true_wcets)
-            per_phase_wcets = np.array(per_phase_wcets)
-
-            # Create a DataFrame for easier manipulation and plotting
-            comparison_df = pd.DataFrame({
-                'true_wcet': true_wcets,
-                'per_phase_wcet': per_phase_wcets
-            })
 
             # Calculate the ratio
-            comparison_df['ratio'] = comparison_df['per_phase_wcet'] / comparison_df['true_wcet']
-            comparison_df['ratio'].median()
-            median_ratios.append(comparison_df['ratio'].median())
-            max_ratios.append(comparison_df['ratio'].max())
+            ratios.append(wcet / true_wcet)
 
-            plot_phase_ratios(task, changepoints, median_ratios, max_ratios)
+            plot_phase_ratios(task, changepoints, ratios)
                     
     else:
         # Fixed number of phases with parallel processing
