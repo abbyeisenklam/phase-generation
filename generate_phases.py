@@ -237,8 +237,8 @@ def plot_phase_ratios(task, changepoints, ratios):
 
     # Set labels and title
     ax.set_xlabel('Number of Changepoints', fontsize=12)
-    ax.set_ylabel(f'Ratio (Phase-Based WCET / True WCET) for {task} with (cache=5, bw=5)', fontsize=12)
-    ax.set_title('Impact of Phase Count on WCET Estimation Accuracy', fontsize=14)
+    ax.set_ylabel('Ratio (Phase-Based WCET / True WCET)', fontsize=12)
+    ax.set_title(f'Impact of Phase Count on WCET Estimation Accuracy for {task} with (cache=5, bw=5)', fontsize=14)
 
     # Set x-axis to start at the minimum changepoint
     ax.set_xlim(min(changepoints) - 1, max(changepoints) + 1)
