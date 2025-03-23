@@ -240,9 +240,6 @@ def plot_phase_ratios(task, changepoints, ratios):
     ax.set_ylabel(f'Ratio (Phase-Based WCET / True WCET) for {task} with (cache=5, bw=5)', fontsize=12)
     ax.set_title('Impact of Phase Count on WCET Estimation Accuracy', fontsize=14)
 
-    # Add legend
-    ax.legend(fontsize=11)
-
     # Set x-axis to start at the minimum changepoint
     ax.set_xlim(min(changepoints) - 1, max(changepoints) + 1)
 
@@ -538,8 +535,8 @@ def main():
     
     if plot_ratios_vs_num_changepoints:
         # Parameters for optimization
-        min_phases = 15
-        max_phases = 20
+        min_phases = 5
+        max_phases = 50
 
         changepoints = []
         ratios = []
@@ -574,7 +571,7 @@ def main():
             # Calculate the ratio
             ratios.append(wcet / true_wcet)
 
-            plot_phase_ratios(task, changepoints, ratios)
+        plot_phase_ratios(task, changepoints, ratios)
                     
     else:
         # Fixed number of phases with parallel processing
