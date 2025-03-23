@@ -535,8 +535,8 @@ def main():
     
     if plot_ratios_vs_num_changepoints:
         # Parameters for optimization
-        min_phases = 5
-        max_phases = 50
+        min_phases = 20
+        max_phases = 60
 
         changepoints = []
         ratios = []
